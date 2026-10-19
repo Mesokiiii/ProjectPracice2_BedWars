@@ -1,0 +1,11 @@
+{
+    "class_name": "BedWarsProfile",
+    "attributes": [
+        "nickname",
+        "team_color",
+        "emeralds"
+    ],
+    "nickname": "Technoblade",
+    "team_color": "зеленая",
+    "emeralds": 500
+}

@@ -1,0 +1,977 @@
+========================================
+файл: main.py
+========================================
+
+import os
+from src.controllers.game_controller import GameController
+
+
+if not os.path.exists("logs"):
+    os.mkdir("logs")
+
+if not os.path.exists("saves"):
+    os.mkdir("saves")
+
+game = GameController(10, 10)
+game.run()
+
+
+========================================
+файл: task4_variant2.py
+========================================
+
+import os
+from src.utils.property_config import BedWarsProfile
+
+
+if not os.path.exists("saves"):
+    os.mkdir("saves")
+
+print("--- проверка задачи 4 (вариант 2) ---")
+
+profile = BedWarsProfile("Dream", "зеленая", 250)
+print("создан профиль:", profile.get_text())
+
+profile.nickname = "Technoblade"
+profile.emeralds = 500
+print("после изменения через @property:", profile.get_text())
+
+profile.save_to_json("saves/task4_bedwars.json")
+print("сохранено в файл: saves/task4_bedwars.json")
+
+new_profile = BedWarsProfile()
+new_profile.load_from_json("saves/task4_bedwars.json")
+print("загружено из файла:", new_profile.get_text())
+
+
+========================================
+файл: src/interfaces/base_interfaces.py
+========================================
+
+class IUnit:
+    # общий интерфейс для юнитов
+    def move(self, dx, dy, field):
+        pass
+
+    def get_info(self):
+        pass
+
+
+class ILandscape:
+    # общий интерфейс для ландшафта
+    def can_pass(self, unit):
+        pass
+
+    def apply_effect(self, unit):
+        pass
+
+
+class INeutralObject:
+    # общий интерфейс для нейтральных объектов
+    def interact(self, unit):
+        pass
+
+
+========================================
+файл: src/units/base_unit.py
+========================================
+
+from src.interfaces.base_interfaces import IUnit, INeutralObject
+from src.utils.logger import logger
+
+
+class BaseUnit(IUnit):
+    def __init__(self, name, unit_type, health, armor, attack, symbol, x=0, y=0, base=None):
+        self.name = name
+        self.unit_type = unit_type
+        self.health = health
+        self.armor = armor
+        self.attack = attack
+        self.symbol = symbol
+        self.x = x
+        self.y = y
+        self.base = base
+
+    def move(self, dx, dy, field):
+        new_x = self.x + dx
+        new_y = self.y + dy
+        return field.move_unit(self, new_x, new_y)
+
+    def take_damage(self, damage):
+        real_damage = damage - (self.armor // 4)
+        if real_damage < 1:
+            real_damage = 1
+        self.health = self.health - real_damage
+        logger.log(f"юнит {self.name} получил урон: {real_damage}")
+
+        if self.health <= 0:
+            self.health = 0
+            if self.base is not None:
+                self.base.on_unit_destroyed(self)
+
+    def get_info(self):
+        return f"[{self.symbol}] {self.name} (тип: {self.unit_type}) | здоровье: {self.health}, броня: {self.armor}, атака: {self.attack} | координаты: ({self.x}, {self.y})"
+
+    def __add__(self, other):
+        # перегрузка оператора + для взаимодействия с нейтральным объектом
+        if isinstance(other, INeutralObject):
+            result = other.interact(self)
+            logger.log(f"взаимодействие: {result}")
+            return result
+        return "нельзя сложить эти объекты"
+
+
+========================================
+файл: src/units/infantry.py
+========================================
+
+from src.units.base_unit import BaseUnit
+
+
+class RusherUnit(BaseUnit):
+    # тип 1: рашеры (ближний бой)
+    def __init__(self, name, health, armor, attack, symbol, x=0, y=0, base=None):
+        super().__init__(name, "рашеры", health, armor, attack, symbol, x, y, base)
+
+
+class SwordRusher(RusherUnit):
+    # вид 1: алмазный мечник
+    def __init__(self, x=0, y=0, base=None):
+        super().__init__("алмазный мечник", 100, 20, 30, "S", x, y, base)
+
+
+class BedBreaker(RusherUnit):
+    # вид 2: крушитель кроватей
+    def __init__(self, x=0, y=0, base=None):
+        super().__init__("крушитель кроватей", 90, 15, 40, "P", x, y, base)
+
+
+========================================
+файл: src/units/archers.py
+========================================
+
+from src.units.base_unit import BaseUnit
+
+
+class SniperUnit(BaseUnit):
+    # тип 2: снайперы (дальний бой)
+    def __init__(self, name, health, armor, attack, symbol, x=0, y=0, base=None):
+        super().__init__(name, "снайперы", health, armor, attack, symbol, x, y, base)
+
+
+class BowSpammer(SniperUnit):
+    # вид 1: лучник-снайпер
+    def __init__(self, x=0, y=0, base=None):
+        super().__init__("лучник-снайпер", 70, 10, 38, "A", x, y, base)
+
+
+class FireballThrower(SniperUnit):
+    # вид 2: метатель фаерболов
+    def __init__(self, x=0, y=0, base=None):
+        super().__init__("метатель фаерболов", 75, 12, 48, "F", x, y, base)
+
+
+========================================
+файл: src/units/cavalry.py
+========================================
+
+from src.units.base_unit import BaseUnit
+
+
+class MobsUnit(BaseUnit):
+    # тип 3: мобы-защитники
+    def __init__(self, name, health, armor, attack, symbol, x=0, y=0, base=None):
+        super().__init__(name, "мобы-защитники", health, armor, attack, symbol, x, y, base)
+
+
+class IronGolem(MobsUnit):
+    # вид 1: железный голем
+    def __init__(self, x=0, y=0, base=None):
+        super().__init__("железный голем", 150, 35, 35, "G", x, y, base)
+
+
+class EnderRider(MobsUnit):
+    # вид 2: эндер-рашер
+    def __init__(self, x=0, y=0, base=None):
+        super().__init__("эндер-рашер", 110, 22, 45, "E", x, y, base)
+
+
+========================================
+файл: src/world/landscapes.py
+========================================
+
+from src.interfaces.base_interfaces import ILandscape
+
+
+class BaseLandscape(ILandscape):
+    def __init__(self, name, symbol):
+        self.name = name
+        self.symbol = symbol
+
+    def can_pass(self, unit):
+        return True
+
+    def apply_effect(self, unit):
+        return f"юнит {unit.name} встал на блок: {self.name}"
+
+
+class WoolBridgeLandscape(BaseLandscape):
+    # тип 1: шерстяной мост
+    def __init__(self):
+        super().__init__("шерстяной мост", ".")
+
+    def apply_effect(self, unit):
+        return f"{unit.name} пробежал по шерстяному мосту"
+
+
+class ObsidianPlatformLandscape(BaseLandscape):
+    # тип 2: обсидиановая платформа
+    def __init__(self):
+        super().__init__("обсидиан", "O")
+
+    def apply_effect(self, unit):
+        unit.armor = unit.armor + 3
+        return f"обсидиан укрепил защиту {unit.name}: +3 к броне"
+
+
+class VoidGapLandscape(BaseLandscape):
+    # тип 3: разлом бездны
+    def __init__(self):
+        super().__init__("разлом бездны", "~")
+
+    def can_pass(self, unit):
+        if unit.name == "железный голем":
+            return False
+        return True
+
+    def apply_effect(self, unit):
+        unit.take_damage(8)
+        return f"{unit.name} перепрыгнул разлом бездны и потерял немного здоровья"
+
+
+========================================
+файл: src/world/neutral_objects.py
+========================================
+
+from src.interfaces.base_interfaces import INeutralObject
+
+
+class BaseNeutralObject(INeutralObject):
+    def __init__(self, name, symbol, x=0, y=0):
+        self.name = name
+        self.symbol = symbol
+        self.x = x
+        self.y = y
+
+    def interact(self, unit):
+        return f"{unit.name} подобрал {self.name}"
+
+    def __radd__(self, unit):
+        return self.interact(unit)
+
+
+class GoldenAppleCrate(BaseNeutralObject):
+    # объект 1: золотое яблоко
+    def __init__(self, x=0, y=0):
+        super().__init__("золотое яблоко", "+", x, y)
+
+    def interact(self, unit):
+        unit.health = unit.health + 30
+        return f"золотое яблоко: {unit.name} получил +30 к здоровью (теперь: {unit.health})"
+
+
+class DiamondGenerator(BaseNeutralObject):
+    # объект 2: алмазный генератор
+    def __init__(self, x=0, y=0):
+        super().__init__("алмазный генератор", "D", x, y)
+
+    def interact(self, unit):
+        unit.armor = unit.armor + 12
+        return f"алмазный генератор: {unit.name} прокачал броню на +12 (теперь: {unit.armor})"
+
+
+class EmeraldGenerator(BaseNeutralObject):
+    # объект 3: изумрудный генератор
+    def __init__(self, x=0, y=0):
+        super().__init__("изумрудный генератор", "$", x, y)
+
+    def interact(self, unit):
+        unit.attack = unit.attack + 15
+        return f"изумрудный генератор: {unit.name} прокачал атаку на +15 (теперь: {unit.attack})"
+
+
+class TntTrap(BaseNeutralObject):
+    # объект 4: ловушка с динамитом
+    def __init__(self, x=0, y=0):
+        super().__init__("динамит tnt", "X", x, y)
+
+    def interact(self, unit):
+        unit.take_damage(25)
+        return f"динамит tnt взорвался: {unit.name} получил урон (осталось здоровья: {unit.health})"
+
+
+========================================
+файл: src/world/base_building.py
+========================================
+
+from src.units.infantry import SwordRusher, BedBreaker
+from src.units.archers import BowSpammer, FireballThrower
+from src.units.cavalry import IronGolem, EnderRider
+from src.utils.logger import logger
+
+
+class BaseBuilding:
+    def __init__(self, name="база красных (кровать)", x=1, y=1, health=500, max_units=6):
+        self.name = name
+        self.x = x
+        self.y = y
+        self.health = health
+        self.max_units = max_units
+        self.symbol = "B"
+        self.units = []
+
+    def create_unit(self, choice, field):
+        if len(self.units) >= self.max_units:
+            return False, f"ошибка: на базе уже максимум бойцов ({self.max_units})"
+
+        spawn_pos = self.find_free_place(field)
+        if spawn_pos is None:
+            return False, "ошибка: вокруг кровати нет свободных клеток"
+
+        sx = spawn_pos[0]
+        sy = spawn_pos[1]
+
+        if choice == "1":
+            new_unit = SwordRusher(sx, sy, self)
+        elif choice == "2":
+            new_unit = BedBreaker(sx, sy, self)
+        elif choice == "3":
+            new_unit = BowSpammer(sx, sy, self)
+        elif choice == "4":
+            new_unit = FireballThrower(sx, sy, self)
+        elif choice == "5":
+            new_unit = IronGolem(sx, sy, self)
+        elif choice == "6":
+            new_unit = EnderRider(sx, sy, self)
+        else:
+            return False, "ошибка: неверный номер бойца"
+
+        added = field.add_unit(new_unit, sx, sy)
+        if added:
+            self.units.append(new_unit)
+            msg = f"создан юнит: {new_unit.name} на клетке ({sx}, {sy})"
+            logger.log(msg)
+            return True, msg
+        else:
+            return False, "ошибка: не удалось поставить юнита на поле"
+
+    def find_free_place(self, field):
+        steps = [(0, 1), (1, 0), (1, 1), (0, -1), (-1, 0), (2, 0), (0, 2)]
+        for dx, dy in steps:
+            nx = self.x + dx
+            ny = self.y + dy
+            if field.is_inside(nx, ny):
+                if field.get_unit_at(nx, ny) is None:
+                    if not (nx == self.x and ny == self.y):
+                        return (nx, ny)
+        return None
+
+    def on_unit_destroyed(self, unit):
+        if unit in self.units:
+            self.units.remove(unit)
+            logger.log(f"база зафиксировала гибель юнита: {unit.name}")
+
+    def get_status(self):
+        text = f"--- состояние базы: {self.name} ---\n"
+        text += f"координаты кровати: ({self.x}, {self.y})\n"
+        text += f"прочность кровати: {self.health}\n"
+        text += f"количество юнитов: {len(self.units)} из {self.max_units}\n"
+
+        if len(self.units) == 0:
+            text += "список юнитов: пусто"
+        else:
+            text += "список юнитов:\n"
+            for i in range(len(self.units)):
+                text += f"  {i + 1}. {self.units[i].get_info()}\n"
+        return text
+
+
+========================================
+файл: src/world/game_field.py
+========================================
+
+import copy
+import random
+from src.world.landscapes import WoolBridgeLandscape, ObsidianPlatformLandscape, VoidGapLandscape
+from src.world.neutral_objects import GoldenAppleCrate, DiamondGenerator, EmeraldGenerator, TntTrap
+from src.utils.logger import logger
+
+
+class GameField:
+    def __init__(self, width=10, height=10, max_objects=18):
+        self.width = width
+        self.height = height
+        self.max_objects = max_objects
+
+        # создаем двумерный список для ландшафта
+        self.grid_landscape = []
+        for y in range(self.height):
+            row = []
+            for x in range(self.width):
+                row.append(WoolBridgeLandscape())
+            self.grid_landscape.append(row)
+
+        self.base = None
+        self.units = []
+        self.neutral_objects = []
+
+    def generate_default_world(self):
+        random.seed(42)
+        for y in range(self.height):
+            for x in range(self.width):
+                r = random.random()
+                if r < 0.18:
+                    self.grid_landscape[y][x] = ObsidianPlatformLandscape()
+                elif r < 0.28:
+                    self.grid_landscape[y][x] = VoidGapLandscape()
+                else:
+                    self.grid_landscape[y][x] = WoolBridgeLandscape()
+
+        # добавляем 4 нейтральных объекта
+        items = [
+            GoldenAppleCrate(3, 2),
+            DiamondGenerator(5, 4),
+            EmeraldGenerator(2, 6),
+            TntTrap(6, 3)
+        ]
+        for item in items:
+            if self.is_inside(item.x, item.y):
+                self.grid_landscape[item.y][item.x] = WoolBridgeLandscape()
+                self.add_neutral_object(item)
+
+    def total_objects_count(self):
+        count = len(self.units) + len(self.neutral_objects)
+        if self.base is not None:
+            count = count + 1
+        return count
+
+    def is_inside(self, x, y):
+        return 0 <= x < self.width and 0 <= y < self.height
+
+    def set_base(self, base):
+        if self.total_objects_count() >= self.max_objects:
+            return False
+        if not self.is_inside(base.x, base.y):
+            return False
+        self.grid_landscape[base.y][base.x] = ObsidianPlatformLandscape()
+        # делаем клетки вокруг базы проходимыми мостами для спавна
+        offsets = [(0, 1), (1, 0), (1, 1), (0, -1), (-1, 0), (2, 0), (0, 2)]
+        for dx, dy in offsets:
+            nx = base.x + dx
+            ny = base.y + dy
+            if self.is_inside(nx, ny):
+                self.grid_landscape[ny][nx] = WoolBridgeLandscape()
+        self.base = base
+        logger.log(f"база поставлена в точке: ({base.x}, {base.y})")
+        return True
+
+    def add_unit(self, unit, x, y):
+        if self.total_objects_count() >= self.max_objects:
+            return False
+        if not self.is_inside(x, y):
+            return False
+        if self.get_unit_at(x, y) is not None:
+            return False
+        if not self.grid_landscape[y][x].can_pass(unit):
+            return False
+
+        unit.x = x
+        unit.y = y
+        self.units.append(unit)
+        return True
+
+    def remove_unit(self, unit):
+        if unit in self.units:
+            self.units.remove(unit)
+            if unit.base is not None:
+                unit.base.on_unit_destroyed(unit)
+            logger.log(f"юнит удален с поля: {unit.name}")
+            return True
+        return False
+
+    def add_neutral_object(self, obj):
+        if self.total_objects_count() >= self.max_objects:
+            return False
+        if not self.is_inside(obj.x, obj.y):
+            return False
+        self.neutral_objects.append(obj)
+        return True
+
+    def remove_neutral_object(self, obj):
+        if obj in self.neutral_objects:
+            self.neutral_objects.remove(obj)
+            return True
+        return False
+
+    def get_unit_at(self, x, y):
+        for unit in self.units:
+            if unit.x == x and unit.y == y:
+                return unit
+        return None
+
+    def get_neutral_at(self, x, y):
+        for obj in self.neutral_objects:
+            if obj.x == x and obj.y == y:
+                return obj
+        return None
+
+    def move_unit(self, unit, new_x, new_y):
+        if not self.is_inside(new_x, new_y):
+            return False, "ошибка: нельзя выйти за границы карты"
+
+        if self.base is not None and self.base.x == new_x and self.base.y == new_y:
+            return False, "ошибка: на этой клетке стоит ваша кровать"
+
+        if self.get_unit_at(new_x, new_y) is not None:
+            return False, "ошибка: клетка уже занята другим бойцом"
+
+        landscape = self.grid_landscape[new_y][new_x]
+        if not landscape.can_pass(unit):
+            return False, f"ошибка: {unit.name} не может пройти через {landscape.name}"
+
+        unit.x = new_x
+        unit.y = new_y
+        text = landscape.apply_effect(unit)
+
+        # если на клетке есть нейтральный объект, используем перегрузку оператора +
+        neutral = self.get_neutral_at(new_x, new_y)
+        if neutral is not None and unit.health > 0:
+            bonus_text = unit + neutral
+            text = text + " | " + bonus_text
+            self.remove_neutral_object(neutral)
+
+        if unit.health <= 0:
+            self.remove_unit(unit)
+            text = text + f" | боец {unit.name} погиб"
+
+        logger.log(text)
+        return True, text
+
+    def copy_field(self):
+        # глубокое копирование поля вместе со всеми объектами
+        logger.log("выполнено копирование игрового поля")
+        return copy.deepcopy(self)
+
+    def render(self):
+        result = f"\n--- карта bedwars ({self.width}x{self.height}) | объектов на поле: {self.total_objects_count()}/{self.max_objects} ---\n"
+        header = "   "
+        for x in range(self.width):
+            header += f"{x:2d} "
+        result += header + "\n"
+
+        for y in range(self.height):
+            row_str = f"{y:2d}| "
+            for x in range(self.width):
+                unit = self.get_unit_at(x, y)
+                neutral = self.get_neutral_at(x, y)
+
+                if self.base is not None and self.base.x == x and self.base.y == y:
+                    sym = self.base.symbol
+                elif unit is not None:
+                    sym = unit.symbol
+                elif neutral is not None:
+                    sym = neutral.symbol
+                else:
+                    sym = self.grid_landscape[y][x].symbol
+                row_str += sym + "  "
+            result += row_str + "\n"
+
+        result += "\nобозначения на карте:\n"
+        result += "база и бойцы: [B] кровать, [S] мечник, [P] крушитель, [A] лучник, [F] фаербол, [G] голем, [E] эндер\n"
+        result += "ландшафт: [.] шерстяной мост, [O] обсидиан (+броня), [~] разлом бездны (-здоровье)\n"
+        result += "объекты: [+] золотое яблоко, [D] алмазы, [$] изумруды, [X] динамит"
+        return result
+
+
+========================================
+файл: src/controllers/base_controller.py
+========================================
+
+class BaseController:
+    def __init__(self, base, field):
+        self.base = base
+        self.field = field
+
+    def show_menu(self):
+        while True:
+            print("\n--- управление базой (кроватью) ---")
+            print("1. показать состояние базы и список бойцов")
+            print("2. создать нового бойца")
+            print("3. удалить бойца с поля")
+            print("4. удалить нейтральный объект с поля")
+            print("0. назад в главное меню")
+
+            choice = input("выберите пункт: ").strip()
+            if choice == "1":
+                print("\n" + self.base.get_status())
+            elif choice == "2":
+                self.recruit_unit()
+            elif choice == "3":
+                self.remove_unit()
+            elif choice == "4":
+                self.remove_neutral()
+            elif choice == "0":
+                break
+            else:
+                print("неверный ввод, попробуйте еще раз")
+
+    def recruit_unit(self):
+        print("\nкого создать возле кровати:")
+        print("1. алмазный мечник (тип: рашеры)")
+        print("2. крушитель кроватей (тип: рашеры)")
+        print("3. лучник-снайпер (тип: снайперы)")
+        print("4. метатель фаерболов (тип: снайперы)")
+        print("5. железный голем (тип: мобы-защитники)")
+        print("6. эндер-рашер (тип: мобы-защитники)")
+
+        code = input("введите номер бойца (1-6): ").strip()
+        ok, text = self.base.create_unit(code, self.field)
+        print(text)
+
+    def remove_unit(self):
+        if len(self.base.units) == 0:
+            print("у базы сейчас нет бойцов")
+            return
+
+        print("\nсписок бойцов:")
+        for i in range(len(self.base.units)):
+            print(f"{i + 1}. {self.base.units[i].get_info()}")
+
+        num = input("введите номер бойца для удаления: ").strip()
+        if num.isdigit():
+            idx = int(num) - 1
+            if 0 <= idx < len(self.base.units):
+                unit = self.base.units[idx]
+                self.field.remove_unit(unit)
+                print(f"боец удален: {unit.name}")
+            else:
+                print("неверный номер")
+        else:
+            print("нужно ввести число")
+
+    def remove_neutral(self):
+        if len(self.field.neutral_objects) == 0:
+            print("на поле больше нет нейтральных объектов")
+            return
+
+        print("\nсписок нейтральных объектов на поле:")
+        for i in range(len(self.field.neutral_objects)):
+            obj = self.field.neutral_objects[i]
+            print(f"{i + 1}. [{obj.symbol}] {obj.name} на клетке ({obj.x}, {obj.y})")
+
+        num = input("введите номер объекта для удаления: ").strip()
+        if num.isdigit():
+            idx = int(num) - 1
+            if 0 <= idx < len(self.field.neutral_objects):
+                obj = self.field.neutral_objects[idx]
+                self.field.remove_neutral_object(obj)
+                print(f"объект удален с поля: {obj.name}")
+            else:
+                print("неверный номер")
+        else:
+            print("нужно ввести число")
+
+
+========================================
+файл: src/controllers/unit_controller.py
+========================================
+
+class UnitController:
+    def __init__(self, base, field):
+        self.base = base
+        self.field = field
+
+    def show_menu(self):
+        if len(self.base.units) == 0:
+            print("\nна поле нет бойцов, сначала создайте их на базе")
+            return
+
+        while True:
+            print("\n--- выбор бойца для управления ---")
+            for i in range(len(self.base.units)):
+                print(f"{i + 1}. {self.base.units[i].get_info()}")
+            print("0. назад в главное меню")
+
+            choice = input("введите номер бойца: ").strip()
+            if choice == "0":
+                break
+
+            if choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(self.base.units):
+                    self.control_unit(self.base.units[idx])
+                else:
+                    print("нет бойца с таким номером")
+            else:
+                print("введите цифру")
+
+    def control_unit(self, unit):
+        while unit in self.base.units:
+            print(self.field.render())
+            print("\nвыбранный боец:", unit.get_info())
+            print("управление: [w] вверх | [s] вниз | [a] влево | [d] вправо | [i] подобрать объект | [0] назад")
+            cmd = input("ваш ход: ").strip().lower()
+
+            if cmd == "0":
+                break
+            elif cmd == "w":
+                ok, text = unit.move(0, -1, self.field)
+                print("результат:", text)
+            elif cmd == "s":
+                ok, text = unit.move(0, 1, self.field)
+                print("результат:", text)
+            elif cmd == "a":
+                ok, text = unit.move(-1, 0, self.field)
+                print("результат:", text)
+            elif cmd == "d":
+                ok, text = unit.move(1, 0, self.field)
+                print("результат:", text)
+            elif cmd == "i":
+                obj = self.field.get_neutral_at(unit.x, unit.y)
+                if obj is not None:
+                    # перегрузка оператора +
+                    print("взаимодействие:", unit + obj)
+                    self.field.remove_neutral_object(obj)
+                    if unit.health <= 0:
+                        self.field.remove_unit(unit)
+                        print("боец погиб")
+                        break
+                else:
+                    print("на этой клетке нет нейтрального объекта")
+            else:
+                print("неизвестная команда")
+
+
+========================================
+файл: src/controllers/game_controller.py
+========================================
+
+from src.world.game_field import GameField
+from src.world.base_building import BaseBuilding
+from src.controllers.base_controller import BaseController
+from src.controllers.unit_controller import UnitController
+from src.utils.property_config import BedWarsProfile
+from src.utils.logger import logger
+
+
+class GameController:
+    def __init__(self, width=10, height=10):
+        self.field = GameField(width, height, 18)
+        self.field.generate_default_world()
+
+        self.base = BaseBuilding("база красных (кровать)", 1, 1, 500, 6)
+        self.field.set_base(self.base)
+
+        # создаем двух стартовых бойцов при запуске
+        self.base.create_unit("1", self.field)
+        self.base.create_unit("3", self.field)
+
+        # задача 4 (вариант 2): класс с декоратором @property и json
+        self.profile = BedWarsProfile("Steve", "красная", 100)
+        self.saved_field_copy = None
+
+        self.base_controller = BaseController(self.base, self.field)
+        self.unit_controller = UnitController(self.base, self.field)
+        logger.log("игра запущена")
+
+    def run(self):
+        print("\n=== minecraft bedwars: текстовая версия (вариант 2) ===")
+        print(self.field.render())
+
+        while True:
+            print("\n------------------------------------------------------------")
+            print("главное меню |", self.profile.get_text())
+            print("------------------------------------------------------------")
+            print("1. показать игровое поле")
+            print("2. управление базой (создание и учет бойцов)")
+            print("3. управление бойцами (перемещение и сбор объектов)")
+            print("4. копирование поля (сохранить и восстановить копию поля)")
+            print("5. профиль игрока (@property и json - задача 4, вариант 2)")
+            print("6. создать новое поле своего размера")
+            print("0. выход")
+
+            choice = input("выберите действие: ").strip()
+            if choice == "1":
+                print(self.field.render())
+            elif choice == "2":
+                self.base_controller.show_menu()
+            elif choice == "3":
+                self.unit_controller.show_menu()
+            elif choice == "4":
+                self.copy_field_menu()
+            elif choice == "5":
+                self.profile_menu()
+            elif choice == "6":
+                self.new_size_menu()
+            elif choice == "0":
+                logger.log("выход из игры")
+                print("игра завершена")
+                break
+            else:
+                print("введите цифру от 0 до 6")
+
+    def copy_field_menu(self):
+        print("\n--- копирование поля (задача 1) ---")
+        print("1. сохранить копию текущего поля")
+        print("2. загрузить сохраненную копию поля")
+        sub = input("ваш выбор: ").strip()
+
+        if sub == "1":
+            self.saved_field_copy = self.field.copy_field()
+            print("копия поля успешно сохранена")
+        elif sub == "2":
+            if self.saved_field_copy is None:
+                print("сначала сделайте копию поля (пункт 1)")
+            else:
+                self.field = self.saved_field_copy.copy_field()
+                self.base = self.field.base
+                self.base_controller = BaseController(self.base, self.field)
+                self.unit_controller = UnitController(self.base, self.field)
+                print("поле восстановлено из копии:")
+                print(self.field.render())
+
+    def profile_menu(self):
+        print("\n--- профиль игрока (@property и json, задача 4) ---")
+        print("текущие данные:", self.profile.get_text())
+        print("1. изменить ник, цвет команды и изумруды")
+        print("2. сохранить в json-файл")
+        print("3. загрузить из json-файла")
+        sub = input("ваш выбор: ").strip()
+
+        if sub == "1":
+            nick = input("введите новый ник: ").strip()
+            color = input("введите цвет команды: ").strip()
+            ems = input("введите количество изумрудов: ").strip()
+            if nick != "":
+                self.profile.nickname = nick
+            if color != "":
+                self.profile.team_color = color
+            if ems.isdigit():
+                self.profile.emeralds = int(ems)
+            print("данные обновлены:", self.profile.get_text())
+        elif sub == "2":
+            self.profile.save_to_json()
+            print("сохранено в файл: saves/bedwars_profile.json")
+        elif sub == "3":
+            if self.profile.load_from_json():
+                print("загружено из файла:", self.profile.get_text())
+            else:
+                print("файл еще не создан, сначала сохраните профиль")
+
+    def new_size_menu(self):
+        w = input("введите ширину поля (например 8): ").strip()
+        h = input("введите высоту поля (например 8): ").strip()
+        m = input("введите макс. число объектов (например 15): ").strip()
+
+        if w.isdigit() and h.isdigit() and m.isdigit():
+            width = max(5, int(w))
+            height = max(5, int(h))
+            max_obj = max(6, int(m))
+            self.field = GameField(width, height, max_obj)
+            self.field.generate_default_world()
+            self.base = BaseBuilding("база красных (кровать)", 1, 1, 500, 6)
+            self.field.set_base(self.base)
+            self.base.create_unit("1", self.field)
+            self.base_controller = BaseController(self.base, self.field)
+            self.unit_controller = UnitController(self.base, self.field)
+            print("создано новое поле:")
+            print(self.field.render())
+        else:
+            print("ошибка: нужно вводить числа")
+
+
+========================================
+файл: src/utils/logger.py
+========================================
+
+class Logger:
+    def log(self, text):
+        file = open("logs/game.log", "a", encoding="utf-8")
+        file.write(text + "\n")
+        file.close()
+
+
+logger = Logger()
+
+
+========================================
+файл: src/utils/property_config.py
+========================================
+
+import json
+
+
+class BedWarsProfile:
+    def __init__(self, nickname="Steve", team_color="красная", emeralds=100):
+        self._nickname = nickname
+        self._team_color = team_color
+        self._emeralds = emeralds
+
+    @property
+    def nickname(self):
+        return self._nickname
+
+    @nickname.setter
+    def nickname(self, value):
+        if value != "":
+            self._nickname = value
+
+    @property
+    def team_color(self):
+        return self._team_color
+
+    @team_color.setter
+    def team_color(self, value):
+        if value != "":
+            self._team_color = value
+
+    @property
+    def emeralds(self):
+        return self._emeralds
+
+    @emeralds.setter
+    def emeralds(self, value):
+        if value >= 0:
+            self._emeralds = value
+        else:
+            self._emeralds = 0
+
+    def save_to_json(self, filename="saves/bedwars_profile.json"):
+        # сохраняем сам объект и информацию о классе в json
+        data = {
+            "class_name": self.__class__.__name__,
+            "attributes": ["nickname", "team_color", "emeralds"],
+            "nickname": self._nickname,
+            "team_color": self._team_color,
+            "emeralds": self._emeralds
+        }
+        file = open(filename, "w", encoding="utf-8")
+        json.dump(data, file, ensure_ascii=False, indent=4)
+        file.close()
+
+    def load_from_json(self, filename="saves/bedwars_profile.json"):
+        try:
+            file = open(filename, "r", encoding="utf-8")
+            data = json.load(file)
+            file.close()
+            self.nickname = data["nickname"]
+            self.team_color = data["team_color"]
+            self.emeralds = data["emeralds"]
+            return True
+        except:
+            return False
+
+    def get_text(self):
+        return f"игрок: {self.nickname} | команда: {self.team_color} | изумруды: {self.emeralds}"
+
+
