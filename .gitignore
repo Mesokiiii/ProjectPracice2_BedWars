@@ -1,2 +1,4 @@
 __pycache__/
 *.pyc
+defense_guide.md
+collect_code.py
